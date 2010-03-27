@@ -1,4 +1,4 @@
-Different
+Differlent
 ---------
 
 This little code project implements longest common subsequence in Erlang, it
@@ -32,6 +32,8 @@ That will create an iolist and write it to a file. It is the patch presented as 
     -bicycle
      horse
      cow
+
+
     $ diff -U 2 a b
     --- a   2010-03-27 19:03:09.483175230 +0100
     +++ b   2010-03-27 19:03:19.099174920 +0100
