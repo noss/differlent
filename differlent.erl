@@ -1,4 +1,4 @@
--module(lcs).
+-module(differlent).
 
 -include_lib("eunit/include/eunit.hrl").
 
