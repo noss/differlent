@@ -33,6 +33,7 @@ That will create an iolist and write it to a file. It is the patch presented as 
      horse
      cow
 
+And the output of unix diff
 
     $ diff -U 2 a b
     --- a   2010-03-27 19:03:09.483175230 +0100
@@ -46,4 +47,18 @@ That will create an iolist and write it to a file. It is the patch presented as 
 
 As you can see, it produces (nearly) the same output as unix diff presents a unified diff. I used two lines of context.
 
+Attempting to use it as input to unix patch and this is what it says
+
+    $ patch --verbose --dry-run < patch 
+    Hmm...  Looks like a unified diff to me...
+    The text leading up to this was:
+    --------------------------
+    |--- a
+    |+++ b
+    --------------------------
+    Patching file a using Plan A...
+    Hunk #1 succeeded at 2.
+    done
+
+No complaints about the format!
 
