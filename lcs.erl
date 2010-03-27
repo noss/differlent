@@ -143,36 +143,43 @@ hunks(Edits, Context) ->
     %% Create a list of hunks like
     %% [{LineOrig,RangeOrig,LineMod,RangeMod, Edits}*]
     
-    Hunks = hunks(1, 1, Edits, Context),
+    Hunks = hunks(0, 0, Edits, Context),
     
-    [{hunkify(LO, LM, LO, LM, Es), Es} || {LO, LM, Es} <- Hunks].
+    [{hunkify(LO, LM, 0, 0, Es), Es} || {LO, LM, Es} <- Hunks].
 
-hunkify(LO, LM, SO, SM, []) ->
-    {SO, LO-SO, SM, LM-SM};
-hunkify(LO, LM, SO, SM, [{Op,_}|Es]) ->
-    case Op of
-	eq ->
-	    hunkify(LO, LM, SO-1, SM-1, Es);
-	rm ->
-	    hunkify(LO, LM, SO-1, SM, Es);
-	in ->
-	    hunkify(LO, LM, SO, SM-1, Es)
+hunkify(LO, LM, RO, RM, []) ->
+    {LO-RO+1, RO, LM-RM+1, RM};
+hunkify(LO, LM, RO, RM, [E|Es]) ->
+    case E of
+	{eq, _} -> hunkify(LO, LM, RO+1, RM+1, Es);
+	{rm, _} -> hunkify(LO, LM, RO+1, RM  , Es);
+	{in, _} -> hunkify(LO, LM, RO  , RM+1, Es)
     end.
-    
 
 hunks(LO, LM, Es, C) ->
     hunk_before(LO, LM, [], Es, C).
 
 -ifdef(TEST).
-hunks_before_test() ->
+hunk_before_test() ->
     Edits = [{eq, a}, 
 	     {eq, b}, 
 	     {rm, c}, 
 	     {eq, d}, 
 	     {eq, e}],
     ?assertMatch([{_, _, [{eq,b},{rm,c},{eq,d}]}], 
-		 hunks(1,1,Edits,1)),
+		 hunk_before(0, 0, [], Edits, 1)),
     ok.
+
+hunk_region_before_test() ->
+    Edits = [{eq, a}, 
+	     {eq, b}, 
+	     {rm, c}, 
+	     {eq, d}, 
+	     {eq, e}],
+    ?assertMatch([{4, 3, _}], 
+		 hunk_before(0,0, [], Edits,1)),
+    ok.
+
 -endif.
 
 hunk_before(_LO, _LM, _Bs, [], _C) ->
@@ -182,8 +189,8 @@ hunk_before(LO, LM, Bs, [E|ERest]=Es, C) ->
     %% keep at most C entries from Bs (i.e. C lines of context before edits)
     case E of
 	{eq,_} -> hunk_before(LO+1, LM+1, [E|Bs], ERest, C);
-	{in,_} -> hunk_start( LO  , LM+1, lists:sublist(Bs, C), Es, C);
-	{rm,_} -> hunk_start( LO+1, LM  , lists:sublist(Bs, C), Es, C)
+	{in,_} -> hunk_start( LO  , LM  , lists:sublist(Bs, C), Es, C);
+	{rm,_} -> hunk_start( LO  , LM  , lists:sublist(Bs, C), Es, C)
     end.
 
 
@@ -191,13 +198,15 @@ hunk_start(L0, LM, Bs, Es, C) ->
     hunk_after(0, L0, LM, Bs, Es, C).
 
 hunk_after(N, LO, LM, Bs, [], C) ->
-    Hs = case N>C of
-	     true ->
-		 lists:nthtail(N-C, Bs);
-	     false ->
-		 Bs
-	 end,
-    [{LO, LM, lists:reverse(Hs)}];
+    case N>C of
+	true ->
+	    Off = N-C,
+	    Hs = lists:nthtail(N-C, Bs);
+	false ->
+	    Off = 0,
+	    Hs = Bs
+    end,
+    [{LO-Off, LM-Off, lists:reverse(Hs)}];
 hunk_after(N, LO, LM, Bs, [E|Es], C) when N =< 2*C  ->
     %% Count the number of eq lines seen, increment line counts 
     %% for original and modified sequences, as long as we havent
@@ -211,15 +220,17 @@ hunk_after(N, LO, LM, Bs, Es, C) when N > 2*C ->
     %% We have now seen 2*N eq lines in a row, use the last
     %% C ones as lookback for next hunk, and the remaining ones
     %% for the hunk we create.
-    Hs = case N>C of
-	     true ->
-		 lists:nthtail(N-C, Bs);
-	     false ->
-		 Bs
-	 end,
+    case N>C of
+	true ->
+	    Off = N-C,
+	    Hs = lists:nthtail(Off, Bs);
+	false ->
+	    Off = 0,
+	    Hs = Bs
+    end,
     %% It is possible to subtract C from both, because the
     %% previous C lines are all 'eq' lines, those exist in both files.
-    [{LO-C, LM-C, lists:reverse(Hs)} | hunk_before(LO,LM,Bs,Es,C)].
+    [{LO-Off, LM-Off, lists:reverse(Hs)} | hunk_before(LO,LM,Bs,Es,C)].
 
 
 -ifdef(TEST).
@@ -299,6 +310,26 @@ hunks_overlap_test() ->
 		 ], 
     		 hunks(Edits, 3)),
     ok.
+hunks_region_test() ->
+    Xs =     [a,b,c,d,e,f,g,h,i,j,k,l,m,n],
+    Ys =     [a,b,c,d,x,f,g,h,x,j,k,l,m,n],
+    Edits = edits(Xs, Ys),
+    
+    ?assertMatch([{{5,1,5,1}, _},
+		  {{9,1,9,1}, _}
+		 ], 
+    		 hunks(Edits, 0)),
+    ?assertMatch([{{4,3,4,3}, _},
+		  {{8,3,8,3}, _}
+		 ], 
+    		 hunks(Edits, 1)),
+    %% This is the interesting situation, the two hunks are close enough to be one
+    ?assertMatch([{{3,9,3,9}, _}], 
+    		 hunks(Edits, 2)),
+    ?assertMatch([{{2,11,2,11}, _}], 
+    		 hunks(Edits, 3)),
+    ok.
+
 -endif.
 
 unified_files(FileA, FileB) ->
